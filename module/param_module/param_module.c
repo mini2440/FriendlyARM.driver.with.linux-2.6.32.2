@@ -1,8 +1,8 @@
 #include <linux/init.h>
 #include <linux/module.h>
 
-char* name = "unknow";
-int age = -1;
+static char* name = "unknow";
+static int age = -1;
 
 module_param(name, charp, S_IRUGO);
 module_param(age, int, S_IRUGO);
