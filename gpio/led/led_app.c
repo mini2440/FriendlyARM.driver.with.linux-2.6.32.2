@@ -8,7 +8,7 @@ int main(int argc, char**argv)
 {
         int fd = -1;
         int i = 0;
-        fd = open("/dev/standard_device", O_RDWR);
+        fd = open("/dev/led1", O_RDWR);
 
         if(fd < 0)
         {
@@ -17,14 +17,14 @@ int main(int argc, char**argv)
         }
 
         int write_buf = -1;
-        for(i = 0; i < 10; i++)
+        for(i = 0; i < 3; i++)
         {
                 write_buf = LED_ON;
                 write(fd, &write_buf, 4);
+                sleep(1);
 
                 write_buf = LED_OFF;
                 write(fd, &write_buf, 4);
-
                 sleep(1);
         }
 
