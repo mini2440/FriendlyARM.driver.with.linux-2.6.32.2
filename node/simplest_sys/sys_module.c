@@ -1,94 +1,117 @@
-#include <linux/module.h>  
-#include <linux/slab.h>  
-#include <linux/kobject.h>  
-#include <linux/platform_device.h>  
-  
-struct att_dev{  
-    struct platform_device *pdev;  
-    struct kobject *kobj;  
-};  
-  
-static ssize_t att_store(struct device *dev,   
-                    struct device_attribute *attr,   
-                    const char *buf, size_t count)   
-{  
-    printk("echo debug buf\n");  
-  
-    return count;  
-}  
-  
-static ssize_t att_show(struct device *dev,  
-                 struct device_attribute *attr,  
-                 char *buf)  
-{  
-    printk("cat debug buf\n");  
-    return 0;  
-}  
-static DEVICE_ATTR(test,0777,att_show,att_store);  
-  
-static struct att_dev *dev = NULL;  
-  
-static __devinit int att_probe(struct platform_device *ppdev){  
-    int ret;  
-      
-    dev->kobj = kobject_create_and_add("attkobj", NULL);   
-    if(dev->kobj == NULL){  
-        ret = -ENOMEM;  
-        goto kobj_err;  
-    }  
-  
-    ret = sysfs_create_file(&dev->pdev->dev.kobj,&dev_attr_test.attr);  
-    if(ret < 0){  
-        goto file_err;  
-    }  
-    return 0;  
-  
-file_err:  
-     kobject_del(dev->kobj);    
-kobj_err:  
-    return ret;  
-}  
-  
-static struct platform_driver att_driver = {  
-    .probe = att_probe,  
-    .driver = {  
-        .owner = THIS_MODULE,  
-        .name = "att_test",  
-    },  
-};  
-  
-static int __init att_init(void)  
-{  
-    int ret;  
-  
-    dev = kzalloc(sizeof(struct att_dev),GFP_KERNEL);  
-    if(dev == NULL){  
-        printk("%s get dev memory error\n",__func__);  
-        return -ENOMEM;  
-    }  
-      
-    dev->pdev = platform_device_register_simple("att_test", -1, NULL, 0);    
-    if(IS_ERR(dev->pdev)){  
-        PTR_ERR(dev->pdev);   
-        printk("%s pdev error\n",__func__);  
-        return -1;  
-    }  
-  
-    ret = platform_driver_register(&att_driver);  
-    if(ret < 0){  
-        printk("%s register driver error\n",__func__);  
-        return ret;  
-    }  
-  
-    return 0;  
-}  
-  
-static void __exit att_exit(void)  
-{  
-      
-}  
-  
-module_init(att_init);  
-module_exit(att_exit);  
-MODULE_LICENSE("GPL");  
-MODULE_AUTHOR("driverSir"); 
+#include <linux/kobject.h>
+#include <linux/string.h>
+#include <linux/sysfs.h>
+#include <linux/module.h>
+#include <linux/init.h>
+
+/**
+ * 这个模块演示如何在 sys 下创建一个简单的子目录 /sys/kernel/kobject-example.
+ * 在这个目录下，将会创建 "foo", "baz", 和 "bar" 这三个文件.
+ * 如果将一个整形值写入这几个文件，则再读取这个文件时，将返回这个值。
+ */
+static int foo;
+static int baz;
+static int bar;
+
+/*
+ * The "foo" file where a static variable is read from and written to.
+ */
+static ssize_t foo_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+        return sprintf(buf, "%d\n", foo);
+}
+
+static ssize_t foo_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+        sscanf(buf, "%du", &foo);
+        return count;
+}
+
+static struct kobj_attribute foo_attribute = __ATTR(foo, 0666, foo_show, foo_store);
+
+/*
+ * More complex function where we determine which varible is being accessed by
+ * looking at the attribute for the "baz" and "bar" files.
+ */
+static ssize_t b_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+        int var;
+
+        if (strcmp(attr->attr.name, "baz") == 0)
+                var = baz;
+        else
+                var = bar;
+        return sprintf(buf, "%d\n", var);
+}
+
+static ssize_t b_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+        int var;
+
+        sscanf(buf, "%du", &var);
+        if (strcmp(attr->attr.name, "baz") == 0)
+                baz = var;
+        else
+                bar = var;
+        return count;
+}
+
+static struct kobj_attribute baz_attribute = __ATTR(baz, 0666, b_show, b_store);
+static struct kobj_attribute bar_attribute = __ATTR(bar, 0666, b_show, b_store);
+
+/*
+ * Create a group of attributes so that we can create and destory them all
+ * at once.
+ */
+static struct attribute *attrs[] = {
+        &foo_attribute.attr,
+        &baz_attribute.attr,
+        &bar_attribute.attr,
+        NULL,   /* need to NULL terminate the list of attributes */
+};
+
+/*
+ * An unnamed attribute group will put all of the attributes directly in
+ * the kobject directory.  If we specify a name, a subdirectory will be
+ * created for the attributes with the directory being the name of the
+ * attribute group.
+ */
+static struct attribute_group attr_group = {
+        .attrs = attrs,
+};
+
+static struct kobject *example_kobj;
+
+static int __init example_init(void)
+{
+        int retval;
+
+        /*
+        * Create a simple kobject with the name of "kobject_example",
+        * located under /sys/kernel/
+        *
+        * As this is a simple directory, no uevent will be sent to
+        * userspace.  That is why this function should not be used for
+        * any type of dynamic kobjects, where the name and number are
+        * not known ahead of time.
+        */
+        example_kobj = kobject_create_and_add("kobject_example", kernel_kobj);
+        if (!example_kobj)
+                return -ENOMEM;
+        
+        /* Create the files associated with this kobject */
+        retval = sysfs_create_group(example_kobj, &attr_group);
+        if (retval)
+                kobject_put(example_kobj);
+        
+        return retval;
+}
+
+static void __exit example_exit(void)
+{
+        kobject_put(example_kobj);
+}
+
+module_init(example_init);
+module_exit(example_exit);
+MODULE_LICENSE("GPL");
